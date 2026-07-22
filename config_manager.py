@@ -12,7 +12,7 @@ log = logging.getLogger("BarHighLight.config")
 class Config:
     enabled: bool = True
     mode: str = "line"  # "line" or "overlay"
-    opacity: int = 200
+    opacity: int = 100
     line_height: int = 4
     refresh_interval: int = 800
     auto_start: bool = False
