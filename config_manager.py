@@ -17,7 +17,9 @@ class Config:
         "chrome.exe": "#FF5722",
         "code.exe": "#2196F3",
         "explorer.exe": "#4CAF50",
-        "python.exe": "#9C27B0",
+        "windowsterminal.exe": "#9C27B0",
+        "taskmgr.exe": "#FF9800",
+        "v2rayn": "#E91E63",
     })
 
 

@@ -40,17 +40,19 @@ def _find_taskbar_list_hwnd() -> int:
     sw = user32.FindWindowExW(rebar, 0, "MSTaskSwWClass", None)
     if not sw:
         return 0
-    return user32.FindWindowExW(sw, 0, "MSTaskListWClass", None)
+    return user32.FindWindowExW(sw, 0, "MSTaskListWClass", 0)
 
 
-def _get_process_name_from_hwnd(hwnd: int) -> str:
-    if not hwnd:
-        return ""
+def _get_pid_from_hwnd(hwnd: int) -> int:
     pid = wintypes.DWORD()
     user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-    if not pid.value:
+    return pid.value
+
+
+def _get_process_name_from_pid(pid: int) -> str:
+    if not pid:
         return ""
-    handle = kernel32.OpenProcess(0x0400 | 0x0010, False, pid.value)
+    handle = kernel32.OpenProcess(0x0400 | 0x0010, False, pid)
     if not handle:
         return ""
     try:
@@ -64,11 +66,69 @@ def _get_process_name_from_hwnd(hwnd: int) -> str:
     return ""
 
 
+def _get_window_text(hwnd: int) -> str:
+    length = user32.GetWindowTextLengthW(hwnd)
+    if length == 0:
+        return ""
+    buf = ctypes.create_unicode_buffer(length + 1)
+    user32.GetWindowTextW(hwnd, buf, length + 1)
+    return buf.value
+
+
+def _build_title_to_proc_map() -> dict:
+    mapping = {}
+
+    WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    def callback(hwnd, _):
+        if user32.IsWindowVisible(hwnd):
+            title = _get_window_text(hwnd)
+            if title:
+                pid = _get_pid_from_hwnd(hwnd)
+                proc = _get_process_name_from_pid(pid)
+                if proc:
+                    mapping[title] = proc
+        return True
+
+    user32.EnumWindows(WNDENUMPROC(callback), 0)
+    return mapping
+
+
+def _match_proc_from_title(button_title: str, title_map: dict) -> str:
+    button_core = button_title.split(" - ")[0].strip().lower()
+    if not button_core:
+        return ""
+    for win_title, proc in title_map.items():
+        win_lower = win_title.lower()
+        if button_core in win_lower:
+            return proc
+    for win_title, proc in title_map.items():
+        win_lower = win_title.lower()
+        for part in win_lower.split(" - "):
+            part = part.strip()
+            if part and len(part) > 2 and part in button_core:
+                return proc
+    if "资源管理器" in button_core or "explorer" in button_core:
+        return "explorer.exe"
+    if "终端" in button_core or "terminal" in button_core:
+        return "windowsterminal.exe"
+    if "任务管理器" in button_core or "task" in button_core:
+        return "taskmgr.exe"
+    if "记事本" in button_core or "notepad" in button_core:
+        return "notepad.exe"
+    if "设置" in button_core or "setting" in button_core:
+        return "systemsettings.exe"
+    return ""
+
+
 def query_taskbar_icons() -> list:
     icons: list = []
     hwnd = _find_taskbar_list_hwnd()
     if not hwnd:
         return icons
+
+    title_map = _build_title_to_proc_map()
+
     try:
         ml = auto.ControlFromHandle(hwnd)
         if not ml:
@@ -84,15 +144,22 @@ def query_taskbar_icons() -> list:
                 right, bottom = int(rect.right), int(rect.bottom)
                 if (right - left) < 5 or (bottom - top) < 5:
                     continue
+
                 title = child.Name or ""
                 child_hwnd = child.NativeWindowHandle
+
                 proc_name = ""
-                if child_hwnd:
-                    proc_name = _get_process_name_from_hwnd(child_hwnd)
+                if child_hwnd and user32.IsWindow(child_hwnd):
+                    pid = _get_pid_from_hwnd(child_hwnd)
+                    proc_name = _get_process_name_from_pid(pid)
+
                 if not proc_name:
-                    proc_name = title.lower().split(" - ")[0].strip()
-                    if not proc_name:
-                        proc_name = "unknown"
+                    proc_name = _match_proc_from_title(title, title_map)
+
+                if not proc_name:
+                    core = title.split(" - ")[0].strip().lower()
+                    proc_name = core if core else "unknown"
+
                 icons.append(TaskbarIcon(
                     process_name=proc_name,
                     window_title=title,
