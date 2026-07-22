@@ -11,7 +11,7 @@ except Exception:
     except Exception:
         pass
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QTimer, pyqtSignal, QObject
 from PyQt6.QtWidgets import QApplication
 
 from logging_config import setup_logging, get_logger
@@ -21,8 +21,14 @@ from overlay_window import OverlayWindow
 from tray_app import TrayApp
 
 
-class App:
+class App(QObject):
+    _toggle_signal = pyqtSignal()
+    _mode_change_signal = pyqtSignal(str)
+    _refresh_signal = pyqtSignal()
+    _exit_signal = pyqtSignal()
+
     def __init__(self):
+        super().__init__()
         self._config_mgr = ConfigManager()
         setup_logging(debug=self._config_mgr.config.debug)
         self._log = logging.getLogger("BarHighLight.main")
@@ -30,6 +36,11 @@ class App:
         self._monitor = TaskbarMonitor()
         self._tray = None
         self._timer = None
+
+        self._toggle_signal.connect(self._handle_toggle)
+        self._mode_change_signal.connect(self._handle_mode_change)
+        self._refresh_signal.connect(self._handle_refresh)
+        self._exit_signal.connect(self._handle_exit)
 
     def run(self) -> None:
         self._log.info("=" * 50)
@@ -82,19 +93,10 @@ class App:
             self._overlay.draw(icons)
 
     def _on_toggle(self) -> None:
-        if self._config_mgr.config.enabled:
-            self._log.info("高亮已启用")
-            icons = self._monitor.refresh()
-            self._overlay.draw(icons)
-        else:
-            self._log.info("高亮已禁用")
-            self._overlay.draw([])
+        self._toggle_signal.emit()
 
     def _on_mode_change(self, mode: str) -> None:
-        self._log.info("模式切换: %s", mode)
-        if self._config_mgr.config.enabled:
-            icons = self._monitor.refresh()
-            self._overlay.draw(icons)
+        self._mode_change_signal.emit(mode)
 
     def _on_edit_config(self) -> None:
         try:
@@ -104,12 +106,33 @@ class App:
             self._log.error("打开配置编辑器失败: %s", e, exc_info=True)
 
     def _on_refresh(self) -> None:
+        self._refresh_signal.emit()
+
+    def _on_exit(self) -> None:
+        self._exit_signal.emit()
+
+    def _handle_toggle(self) -> None:
+        if self._config_mgr.config.enabled:
+            self._log.info("高亮已启用")
+            icons = self._monitor.refresh()
+            self._overlay.draw(icons)
+        else:
+            self._log.info("高亮已禁用")
+            self._overlay.draw([])
+
+    def _handle_mode_change(self, mode: str) -> None:
+        self._log.info("模式切换: %s", mode)
+        if self._config_mgr.config.enabled:
+            icons = self._monitor.refresh()
+            self._overlay.draw(icons)
+
+    def _handle_refresh(self) -> None:
         self._log.info("手动刷新")
         if self._config_mgr.config.enabled:
             icons = self._monitor.refresh()
             self._overlay.draw(icons)
 
-    def _on_exit(self) -> None:
+    def _handle_exit(self) -> None:
         self._log.info("程序退出")
         if self._timer:
             self._timer.stop()
