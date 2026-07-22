@@ -136,6 +136,8 @@ class App(QObject):
         self._log.info("程序退出")
         if self._timer:
             self._timer.stop()
+        if self._tray:
+            self._tray.stop()
         self._overlay.destroy()
         QApplication.instance().quit()
 
