@@ -1,0 +1,4 @@
+comtypes>=1.4.0
+uiautomation>=2.0.18
+pystray>=0.19
+Pillow>=9.0
