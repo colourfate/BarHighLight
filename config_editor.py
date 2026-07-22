@@ -1,131 +1,162 @@
-import tkinter as tk
-from tkinter import colorchooser, messagebox
 import logging
+import threading
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QIcon, QPixmap
+from PyQt6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout,
+    QListWidget, QListWidgetItem, QPushButton, QLabel,
+    QLineEdit, QColorDialog, QMessageBox,
+)
 
 from config_manager import ConfigManager
 
 log = logging.getLogger("BarHighLight.editor")
 
 
-class ConfigEditor:
+def _color_swatch(color_hex: str, size: int = 16) -> QIcon:
+    pixmap = QPixmap(size, size)
+    pixmap.fill(QColor(color_hex))
+    return QIcon(pixmap)
+
+
+class ConfigEditor(QWidget):
     def __init__(self, config_mgr: ConfigManager):
+        super().__init__()
         self._config_mgr = config_mgr
-        self._root = tk.Tk()
-        self._root.title("BarHighLight - 颜色配置")
-        self._root.geometry("520x420")
-        self._root.resizable(False, False)
-        self._root.attributes("-topmost", True)
-        self._listbox = None
+        self.setWindowTitle("BarHighLight - 颜色配置")
+        self.setFixedSize(520, 420)
+        self.setWindowFlags(
+            Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Window
+        )
+        self._list = None
         self._build_ui()
         self._refresh_list()
 
     def _build_ui(self) -> None:
-        toolbar = tk.Frame(self._root)
-        toolbar.pack(fill=tk.X, padx=8, pady=(8, 4))
+        layout = QVBoxLayout(self)
 
-        tk.Button(toolbar, text="添加", width=8, command=self._add_entry).pack(side=tk.LEFT, padx=2)
-        tk.Button(toolbar, text="修改颜色", width=8, command=self._edit_color).pack(side=tk.LEFT, padx=2)
-        tk.Button(toolbar, text="删除", width=8, command=self._delete_entry).pack(side=tk.LEFT, padx=2)
+        toolbar = QHBoxLayout()
+        btn_add = QPushButton("添加")
+        btn_add.setFixedWidth(80)
+        btn_add.clicked.connect(self._add_entry)
+        btn_edit = QPushButton("修改颜色")
+        btn_edit.setFixedWidth(80)
+        btn_edit.clicked.connect(self._edit_color)
+        btn_delete = QPushButton("删除")
+        btn_delete.setFixedWidth(80)
+        btn_delete.clicked.connect(self._delete_entry)
+        toolbar.addWidget(btn_add)
+        toolbar.addWidget(btn_edit)
+        toolbar.addWidget(btn_delete)
+        toolbar.addStretch()
+        layout.addLayout(toolbar)
 
-        list_frame = tk.Frame(self._root)
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
+        self._list = QListWidget()
+        self._list.setFont(QApplication.font())
+        self._list.itemDoubleClicked.connect(self._edit_color)
+        layout.addWidget(self._list)
 
-        scrollbar = tk.Scrollbar(list_frame)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        self._listbox = tk.Listbox(
-            list_frame, font=("Consolas", 11),
-            yscrollcommand=scrollbar.set, selectmode=tk.SINGLE
-        )
-        self._listbox.pack(fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self._listbox.yview)
-
-        bottom = tk.Frame(self._root)
-        bottom.pack(fill=tk.X, padx=8, pady=(4, 8))
-
-        tk.Label(bottom, text="提示: 双击条目可快速修改颜色", fg="gray").pack(side=tk.LEFT)
-        tk.Button(bottom, text="关闭", width=8, command=self._root.destroy).pack(side=tk.RIGHT, padx=2)
-
-        self._listbox.bind("<Double-1>", lambda e: self._edit_color())
+        bottom = QHBoxLayout()
+        hint = QLabel("提示: 双击条目可快速修改颜色")
+        hint.setStyleSheet("color: gray;")
+        btn_close = QPushButton("关闭")
+        btn_close.setFixedWidth(80)
+        btn_close.clicked.connect(self.close)
+        bottom.addWidget(hint)
+        bottom.addStretch()
+        bottom.addWidget(btn_close)
+        layout.addLayout(bottom)
 
     def _refresh_list(self) -> None:
-        self._listbox.delete(0, tk.END)
-        highlights = self._config_mgr.config.highlights
-        for proc, color in sorted(highlights.items()):
-            self._listbox.insert(tk.END, f"  {color}    {proc}")
+        self._list.clear()
+        for proc, color in sorted(self._config_mgr.config.highlights.items()):
+            item = QListWidgetItem(f"  {color}    {proc}")
+            item.setIcon(_color_swatch(color))
+            item.setData(Qt.ItemDataRole.UserRole, (proc, color))
+            self._list.addItem(item)
 
     def _add_entry(self) -> None:
-        dialog = tk.Toplevel(self._root)
-        dialog.title("添加进程")
-        dialog.geometry("320x120")
-        dialog.resizable(False, False)
-        dialog.attributes("-topmost", True)
-        dialog.grab_set()
+        dialog = QWidget(self, Qt.WindowType.Dialog | Qt.WindowType.WindowStaysOnTopHint)
+        dialog.setWindowTitle("添加进程")
+        dialog.setFixedSize(340, 120)
 
-        tk.Label(dialog, text="进程名 (如 chrome.exe):").pack(padx=12, pady=(12, 2), anchor=tk.W)
-        proc_entry = tk.Entry(dialog, width=36)
-        proc_entry.pack(padx=12, pady=2)
-        proc_entry.focus_set()
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel("进程名 (如 chrome.exe):"))
+        entry = QLineEdit()
+        entry.setPlaceholderText("chrome.exe")
+        entry.setFocus()
+        layout.addWidget(entry)
+
+        btn_row = QHBoxLayout()
+        btn_ok = QPushButton("确定")
+        btn_cancel = QPushButton("取消")
+        btn_row.addWidget(btn_ok)
+        btn_row.addWidget(btn_cancel)
+        layout.addLayout(btn_row)
 
         def confirm():
-            name = proc_entry.get().strip()
+            name = entry.text().strip()
             if not name:
-                messagebox.showwarning("提示", "请输入进程名", parent=dialog)
+                QMessageBox.warning(dialog, "提示", "请输入进程名")
                 return
             if not name.lower().endswith(".exe"):
                 name += ".exe"
             color = "#4CAF50"
-            chooser_result = colorchooser.askcolor(
-                initialcolor=color, title="选择颜色", parent=dialog
-            )
-            if chooser_result and chooser_result[1]:
-                color = chooser_result[1]
+            chosen = QColorDialog.getColor(QColor(color), dialog, "选择颜色")
+            if chosen.isValid():
+                color = chosen.name()
             self._config_mgr.set_highlight(name.lower(), color)
             log.info("新增颜色配置: %s -> %s", name.lower(), color)
             self._refresh_list()
-            dialog.destroy()
+            dialog.close()
 
-        tk.Button(dialog, text="确定", width=10, command=confirm).pack(pady=8)
+        btn_ok.clicked.connect(confirm)
+        btn_cancel.clicked.connect(dialog.close)
+        dialog.show()
 
     def _edit_color(self) -> None:
-        sel = self._listbox.curselection()
-        if not sel:
+        item = self._list.currentItem()
+        if not item:
             return
-        item_text = self._listbox.get(sel[0]).strip()
-        parts = item_text.split()
-        if len(parts) < 2:
-            return
-        old_color = parts[0]
-        proc_name = parts[1]
-
-        chooser_result = colorchooser.askcolor(
-            initialcolor=old_color, title=f"选择 {proc_name} 的颜色"
-        )
-        if chooser_result and chooser_result[1]:
-            new_color = chooser_result[1]
-            self._config_mgr.set_highlight(proc_name, new_color)
-            log.info("修改颜色: %s %s -> %s", proc_name, old_color, new_color)
+        proc, old_color = item.data(Qt.ItemDataRole.UserRole)
+        chosen = QColorDialog.getColor(QColor(old_color), self, f"选择 {proc} 的颜色")
+        if chosen.isValid():
+            new_color = chosen.name()
+            self._config_mgr.set_highlight(proc, new_color)
+            log.info("修改颜色: %s %s -> %s", proc, old_color, new_color)
             self._refresh_list()
 
     def _delete_entry(self) -> None:
-        sel = self._listbox.curselection()
-        if not sel:
+        item = self._list.currentItem()
+        if not item:
             return
-        item_text = self._listbox.get(sel[0]).strip()
-        parts = item_text.split()
-        if len(parts) < 2:
-            return
-        proc_name = parts[1]
-        if messagebox.askyesno("确认", f"删除 {proc_name} 的颜色配置?"):
-            self._config_mgr.remove_highlight(proc_name)
-            log.info("删除颜色配置: %s", proc_name)
+        proc, _ = item.data(Qt.ItemDataRole.UserRole)
+        reply = QMessageBox.question(
+            self, "确认", f"删除 {proc} 的颜色配置?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._config_mgr.remove_highlight(proc)
+            log.info("删除颜色配置: %s", proc)
             self._refresh_list()
 
-    def show(self) -> None:
-        log.info("配置编辑器已打开")
-        self._root.mainloop()
+    def closeEvent(self, event):
+        log.info("配置编辑器已关闭")
+        event.accept()
 
 
 def open_editor(config_mgr: ConfigManager) -> None:
-    editor = ConfigEditor(config_mgr)
-    editor.show()
+    log.info("配置编辑器已打开")
+
+    def _run():
+        app = QApplication.instance()
+        if app is None:
+            app = QApplication([])
+        editor = ConfigEditor(config_mgr)
+        editor.show()
+        app.exec()
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
