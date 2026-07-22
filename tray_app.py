@@ -29,6 +29,7 @@ class TrayApp:
         on_toggle: Callable[[], None],
         on_mode_change: Callable[[str], None],
         on_edit_config: Callable[[], None],
+        on_edit_taskbar_colors: Callable[[], None],
         on_refresh: Callable[[], None],
         on_exit: Callable[[], None],
     ):
@@ -39,6 +40,7 @@ class TrayApp:
         self._on_toggle = on_toggle
         self._on_mode_change = on_mode_change
         self._on_edit_config = on_edit_config
+        self._on_edit_taskbar_colors = on_edit_taskbar_colors
         self._on_refresh = on_refresh
         self._on_exit = on_exit
         self._icon: pystray.Icon = None
@@ -69,6 +71,7 @@ class TrayApp:
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("编辑颜色配置", self._menu_edit_config),
+            pystray.MenuItem("配置图标颜色", self._menu_edit_taskbar_colors),
             pystray.MenuItem("刷新状态", self._menu_refresh),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
@@ -101,7 +104,10 @@ class TrayApp:
         self._on_mode_change(mode)
 
     def _menu_edit_config(self) -> None:
-        threading.Thread(target=self._on_edit_config, daemon=True).start()
+        self._on_edit_config()
+
+    def _menu_edit_taskbar_colors(self) -> None:
+        self._on_edit_taskbar_colors()
 
     def _menu_refresh(self) -> None:
         threading.Thread(target=self._on_refresh, daemon=True).start()

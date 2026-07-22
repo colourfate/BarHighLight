@@ -26,6 +26,8 @@ class App(QObject):
     _mode_change_signal = pyqtSignal(str)
     _refresh_signal = pyqtSignal()
     _exit_signal = pyqtSignal()
+    _open_editor_signal = pyqtSignal()
+    _open_taskbar_editor_signal = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -41,6 +43,8 @@ class App(QObject):
         self._mode_change_signal.connect(self._handle_mode_change)
         self._refresh_signal.connect(self._handle_refresh)
         self._exit_signal.connect(self._handle_exit)
+        self._open_editor_signal.connect(self._handle_open_editor)
+        self._open_taskbar_editor_signal.connect(self._handle_open_taskbar_editor)
 
     def run(self) -> None:
         self._log.info("=" * 50)
@@ -57,6 +61,7 @@ class App(QObject):
             on_toggle=self._on_toggle,
             on_mode_change=self._on_mode_change,
             on_edit_config=self._on_edit_config,
+            on_edit_taskbar_colors=self._on_edit_taskbar_colors,
             on_refresh=self._on_refresh,
             on_exit=self._on_exit,
         )
@@ -99,11 +104,10 @@ class App(QObject):
         self._mode_change_signal.emit(mode)
 
     def _on_edit_config(self) -> None:
-        try:
-            from config_editor import open_editor
-            open_editor(self._config_mgr)
-        except Exception as e:
-            self._log.error("打开配置编辑器失败: %s", e, exc_info=True)
+        self._open_editor_signal.emit()
+
+    def _on_edit_taskbar_colors(self) -> None:
+        self._open_taskbar_editor_signal.emit()
 
     def _on_refresh(self) -> None:
         self._refresh_signal.emit()
@@ -141,9 +145,26 @@ class App(QObject):
         self._overlay.destroy()
         QApplication.instance().quit()
 
+    def _handle_open_editor(self) -> None:
+        try:
+            from config_editor import ConfigEditor
+            self._config_editor = ConfigEditor(self._config_mgr)
+            self._config_editor.show()
+        except Exception as e:
+            self._log.error("打开配置编辑器失败: %s", e, exc_info=True)
+
+    def _handle_open_taskbar_editor(self) -> None:
+        try:
+            from config_editor import TaskbarColorEditor
+            self._taskbar_color_editor = TaskbarColorEditor(self._config_mgr)
+            self._taskbar_color_editor.show()
+        except Exception as e:
+            self._log.error("打开任务栏图标颜色编辑器失败: %s", e, exc_info=True)
+
 
 def main():
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
     bar_app = App()
     bar_app.run()
 
