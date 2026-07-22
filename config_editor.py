@@ -1,7 +1,10 @@
 import tkinter as tk
 from tkinter import colorchooser, messagebox
+import logging
 
 from config_manager import ConfigManager
+
+log = logging.getLogger("BarHighLight.editor")
 
 
 class ConfigEditor:
@@ -78,6 +81,7 @@ class ConfigEditor:
             if chooser_result and chooser_result[1]:
                 color = chooser_result[1]
             self._config_mgr.set_highlight(name.lower(), color)
+            log.info("新增颜色配置: %s -> %s", name.lower(), color)
             self._refresh_list()
             dialog.destroy()
 
@@ -100,6 +104,7 @@ class ConfigEditor:
         if chooser_result and chooser_result[1]:
             new_color = chooser_result[1]
             self._config_mgr.set_highlight(proc_name, new_color)
+            log.info("修改颜色: %s %s -> %s", proc_name, old_color, new_color)
             self._refresh_list()
 
     def _delete_entry(self) -> None:
@@ -113,9 +118,11 @@ class ConfigEditor:
         proc_name = parts[1]
         if messagebox.askyesno("确认", f"删除 {proc_name} 的颜色配置?"):
             self._config_mgr.remove_highlight(proc_name)
+            log.info("删除颜色配置: %s", proc_name)
             self._refresh_list()
 
     def show(self) -> None:
+        log.info("配置编辑器已打开")
         self._root.mainloop()
 
 

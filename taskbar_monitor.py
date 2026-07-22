@@ -1,11 +1,13 @@
 import ctypes
 import ctypes.wintypes as wintypes
 import threading
-import time
+import logging
 from dataclasses import dataclass
 from typing import Optional
 
 import uiautomation as auto
+
+log = logging.getLogger("BarHighLight.taskbar")
 
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
@@ -33,14 +35,20 @@ class TaskbarIcon:
 def _find_taskbar_list_hwnd() -> int:
     shell = user32.FindWindowW("Shell_TrayWnd", None)
     if not shell:
+        log.debug("未找到 Shell_TrayWnd")
         return 0
     rebar = user32.FindWindowExW(shell, 0, "ReBarWindow32", None)
     if not rebar:
+        log.debug("未找到 ReBarWindow32")
         return 0
     sw = user32.FindWindowExW(rebar, 0, "MSTaskSwWClass", None)
     if not sw:
+        log.debug("未找到 MSTaskSwWClass")
         return 0
-    return user32.FindWindowExW(sw, 0, "MSTaskListWClass", 0)
+    hwnd = user32.FindWindowExW(sw, 0, "MSTaskListWClass", 0)
+    if not hwnd:
+        log.debug("未找到 MSTaskListWClass")
+    return hwnd
 
 
 def _get_pid_from_hwnd(hwnd: int) -> int:
@@ -54,13 +62,14 @@ def _get_process_name_from_pid(pid: int) -> str:
         return ""
     handle = kernel32.OpenProcess(0x0400 | 0x0010, False, pid)
     if not handle:
+        log.debug("无法打开进程 PID=%d, 错误=%d", pid, kernel32.GetLastError())
         return ""
     try:
         buf = ctypes.create_unicode_buffer(260)
         if psapi.GetModuleBaseNameW(handle, None, buf, 260):
             return buf.value.lower()
-    except Exception:
-        pass
+    except Exception as e:
+        log.debug("获取进程名失败 PID=%d: %s", pid, e)
     finally:
         kernel32.CloseHandle(handle)
     return ""
@@ -91,6 +100,7 @@ def _build_title_to_proc_map() -> dict:
         return True
 
     user32.EnumWindows(WNDENUMPROC(callback), 0)
+    log.debug("窗口标题映射: %d 条", len(mapping))
     return mapping
 
 
@@ -125,6 +135,7 @@ def query_taskbar_icons() -> list:
     icons: list = []
     hwnd = _find_taskbar_list_hwnd()
     if not hwnd:
+        log.warning("任务栏窗口句柄未找到，无法检测图标")
         return icons
 
     title_map = _build_title_to_proc_map()
@@ -132,6 +143,7 @@ def query_taskbar_icons() -> list:
     try:
         ml = auto.ControlFromHandle(hwnd)
         if not ml:
+            log.warning("无法获取任务栏 UIA 控件")
             return icons
         for child in ml.GetChildren():
             try:
@@ -166,10 +178,12 @@ def query_taskbar_icons() -> list:
                     rect=(left, top, right, bottom),
                     hwnd=child_hwnd,
                 ))
-            except Exception:
+            except Exception as e:
+                log.debug("处理任务栏子控件异常: %s", e)
                 continue
-    except Exception:
-        pass
+    except Exception as e:
+        log.error("任务栏 UIA 枚举失败: %s", e)
+    log.debug("检测到 %d 个任务栏图标", len(icons))
     return icons
 
 
@@ -181,13 +195,13 @@ class TaskbarMonitor:
     def refresh(self) -> list:
         try:
             auto.Initialize()
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("UIA Initialize 异常 (可忽略): %s", e)
         icons = query_taskbar_icons()
         try:
             auto.Uninitialize()
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("UIA Uninitialize 异常 (可忽略): %s", e)
         with self._lock:
             self._icons = icons
         return icons

@@ -1,10 +1,13 @@
 import ctypes
 import ctypes.wintypes as wintypes
 import threading
+import logging
 from typing import Optional
 
 from config_manager import Config
 from taskbar_monitor import TaskbarIcon
+
+log = logging.getLogger("BarHighLight.overlay")
 
 
 class POINT(ctypes.Structure):
@@ -144,17 +147,23 @@ class OverlayWindow:
         self._thread = threading.Thread(target=self._window_thread, daemon=True)
         self._thread.start()
         self._ready.wait(timeout=5)
+        if self._hwnd:
+            log.info("覆盖层窗口创建成功 hwnd=0x%X (%dx%d)", self._hwnd, self._screen_w, self._screen_h)
+        else:
+            log.error("覆盖层窗口创建失败！")
 
     def destroy(self) -> None:
         self._running = False
         if self._hwnd:
             user32.PostMessageW(self._hwnd, 0x0010, 0, 0)
+            log.info("覆盖层窗口已销毁")
         if self._thread:
             self._thread.join(timeout=3)
             self._thread = None
 
     def update_config(self, config: Config) -> None:
         self._config = config
+        log.debug("覆盖层配置已更新: mode=%s, opacity=%d", config.mode, config.opacity)
 
     def draw(self, icons: list) -> None:
         if not self._hwnd or not self._running:
@@ -178,6 +187,7 @@ class OverlayWindow:
         )
 
         if not self._hwnd:
+            log.error("CreateWindowExW 失败, 错误=%d", kernel32.GetLastError())
             self._ready.set()
             return
 
@@ -200,6 +210,7 @@ class OverlayWindow:
 
         user32.SetLayeredWindowAttributes(self._hwnd, 0, 255, LWA_ALPHA)
         user32.ShowWindow(self._hwnd, SW_SHOWNA)
+        log.debug("覆盖层窗口线程启动, 消息循环开始")
         self._ready.set()
 
         msg = wintypes.MSG()
@@ -261,3 +272,4 @@ class OverlayWindow:
         gdi32.DeleteObject(hbmp)
         gdi32.DeleteDC(hdc_mem)
         user32.ReleaseDC(0, screen_dc)
+        log.debug("绘制完成: %d 个图标, 模式=%s", len(icons), self._config.mode)

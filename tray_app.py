@@ -1,10 +1,13 @@
 import sys
 import threading
+import logging
 from typing import Callable
 from PIL import Image, ImageDraw
 import pystray
 
 from config_manager import ConfigManager
+
+log = logging.getLogger("BarHighLight.tray")
 
 _tray_app_instance: "TrayApp" = None
 
@@ -110,6 +113,7 @@ class TrayApp:
         self._on_exit()
 
     def run(self) -> None:
+        log.info("系统托盘图标已启动")
         self._icon.run()
 
     def stop(self) -> None:
