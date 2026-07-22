@@ -1,7 +1,6 @@
 import ctypes
 import sys
 import threading
-import time
 import logging
 
 try:
@@ -11,6 +10,9 @@ except Exception:
         ctypes.windll.user32.SetProcessDPIAware()
     except Exception:
         pass
+
+from PyQt6.QtCore import QTimer
+from PyQt6.QtWidgets import QApplication
 
 from logging_config import setup_logging, get_logger
 from config_manager import ConfigManager
@@ -27,7 +29,7 @@ class App:
         self._overlay = OverlayWindow(self._config_mgr.config)
         self._monitor = TaskbarMonitor()
         self._tray = None
-        self._running = True
+        self._timer = None
 
     def run(self) -> None:
         self._log.info("=" * 50)
@@ -53,23 +55,28 @@ class App:
 
         self._config_mgr.register_on_change(self._on_config_change)
 
-        interval = self._config_mgr.config.refresh_interval / 1000.0
-        self._log.info("主循环启动, 刷新间隔 %.2fs", interval)
-        while self._running:
-            try:
-                if self._config_mgr.config.enabled:
-                    icons = self._monitor.refresh()
-                    self._overlay.draw(icons)
-            except Exception as e:
-                self._log.error("主循环刷新异常: %s", e, exc_info=True)
-            try:
-                interval = self._config_mgr.config.refresh_interval / 1000.0
-            except Exception:
-                interval = 0.8
-            time.sleep(interval)
+        interval = self._config_mgr.config.refresh_interval
+        self._log.info("主循环启动, 刷新间隔 %dms", interval)
+
+        self._timer = QTimer()
+        self._timer.timeout.connect(self._poll)
+        self._timer.start(interval)
+
+        QApplication.instance().exec()
+
+    def _poll(self) -> None:
+        try:
+            if self._config_mgr.config.enabled:
+                icons = self._monitor.refresh()
+                self._overlay.draw(icons)
+        except Exception as e:
+            self._log.error("主循环刷新异常: %s", e, exc_info=True)
 
     def _on_config_change(self) -> None:
         self._overlay.update_config(self._config_mgr.config)
+        new_interval = self._config_mgr.config.refresh_interval
+        if self._timer and self._timer.interval() != new_interval:
+            self._timer.start(new_interval)
         if self._config_mgr.config.enabled:
             icons = self._monitor.refresh()
             self._overlay.draw(icons)
@@ -104,14 +111,16 @@ class App:
 
     def _on_exit(self) -> None:
         self._log.info("程序退出")
-        self._running = False
+        if self._timer:
+            self._timer.stop()
         self._overlay.destroy()
-        sys.exit(0)
+        QApplication.instance().quit()
 
 
 def main():
-    app = App()
-    app.run()
+    app = QApplication(sys.argv)
+    bar_app = App()
+    bar_app.run()
 
 
 if __name__ == "__main__":
