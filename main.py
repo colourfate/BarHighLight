@@ -35,6 +35,7 @@ class App(QObject):
         setup_logging(debug=self._config_mgr.config.debug)
         self._log = logging.getLogger("BarHighLight.main")
         self._overlay = OverlayWindow(self._config_mgr.config)
+        self._overlay.set_screen(self._config_mgr.config.screen_index)
         self._monitor = TaskbarMonitor()
         self._tray = None
         self._timer = None
@@ -64,6 +65,7 @@ class App(QObject):
             on_edit_taskbar_colors=self._on_edit_taskbar_colors,
             on_refresh=self._on_refresh,
             on_exit=self._on_exit,
+            on_screen_change=self._on_screen_change,
         )
 
         tray_thread = threading.Thread(target=self._tray.run, daemon=True)
@@ -96,6 +98,9 @@ class App(QObject):
         if self._config_mgr.config.enabled:
             icons = self._monitor.refresh()
             self._overlay.draw(icons)
+
+    def _on_screen_change(self, screen_index: int) -> None:
+        self._config_mgr.set_screen_index(screen_index)
 
     def _on_toggle(self) -> None:
         self._toggle_signal.emit()

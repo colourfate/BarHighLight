@@ -6,6 +6,7 @@ from PIL import Image, ImageDraw
 import pystray
 
 from config_manager import ConfigManager
+from overlay_window import get_available_screens
 
 log = logging.getLogger("BarHighLight.tray")
 
@@ -32,6 +33,7 @@ class TrayApp:
         on_edit_taskbar_colors: Callable[[], None],
         on_refresh: Callable[[], None],
         on_exit: Callable[[], None],
+        on_screen_change: Callable[[int], None] = None,
     ):
         global _tray_app_instance
         _tray_app_instance = self
@@ -43,12 +45,15 @@ class TrayApp:
         self._on_edit_taskbar_colors = on_edit_taskbar_colors
         self._on_refresh = on_refresh
         self._on_exit = on_exit
+        self._on_screen_change = on_screen_change
         self._icon: pystray.Icon = None
         self._build_icon()
 
     def _build_icon(self) -> None:
         cfg = self._config_mgr.config
         icon_img = _create_icon_image("#4CAF50" if cfg.enabled else "#9E9E9E")
+
+        screen_menu = self._build_screen_menu()
 
         menu = pystray.Menu(
             pystray.MenuItem(
@@ -70,6 +75,7 @@ class TrayApp:
                 radio=True,
             ),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem("目标屏幕", screen_menu),
             pystray.MenuItem("编辑颜色配置", self._menu_edit_config),
             pystray.MenuItem("配置图标颜色", self._menu_edit_taskbar_colors),
             pystray.MenuItem("刷新状态", self._menu_refresh),
@@ -88,6 +94,41 @@ class TrayApp:
             "BarHighLight",
             menu,
         )
+
+    def _build_screen_menu(self) -> pystray.Menu:
+        try:
+            screens = get_available_screens()
+        except Exception:
+            screens = []
+
+        items = []
+        for s in screens:
+            idx = s["index"]
+            name = s["name"]
+            primary = " (主)" if s["is_primary"] else ""
+            lw, lh = s["logical_rect"][2], s["logical_rect"][3]
+            label = f"[{idx}] {name}{primary} ({lw}x{lh})"
+
+            def _make_action(screen_idx):
+                return lambda: self._menu_set_screen(screen_idx)
+
+            def _make_checked(screen_idx):
+                return lambda item: self._config_mgr.config.screen_index == screen_idx
+
+            items.append(pystray.MenuItem(
+                label,
+                _make_action(idx),
+                checked=_make_checked(idx),
+                radio=True,
+            ))
+        if not items:
+            items.append(pystray.MenuItem("未检测到屏幕", None, enabled=False))
+        return pystray.Menu(*items)
+
+    def _menu_set_screen(self, screen_index: int) -> None:
+        if self._on_screen_change:
+            self._on_screen_change(screen_index)
+        log.info("目标屏幕切换为: %d", screen_index)
 
     def _update_icon_image(self) -> None:
         cfg = self._config_mgr.config

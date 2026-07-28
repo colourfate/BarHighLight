@@ -17,6 +17,7 @@ class Config:
     refresh_interval: int = 800
     auto_start: bool = False
     debug: bool = False
+    screen_index: int = -1  # -1=主屏幕, 0+=指定屏幕索引
     highlights: dict = field(default_factory=lambda: {
         "chrome.exe": "#FF5722",
         "code.exe": "#2196F3",
@@ -54,6 +55,7 @@ def load_config() -> Config:
             cfg.auto_start = data.get("auto_start", cfg.auto_start)
             cfg.debug = data.get("debug", cfg.debug)
             cfg.highlights = data.get("highlights", cfg.highlights)
+            cfg.screen_index = data.get("screen_index", cfg.screen_index)
             log.info("配置已加载: %s", path)
             log.debug("配置内容: enabled=%s, mode=%s, debug=%s, highlights=%d项",
                        cfg.enabled, cfg.mode, cfg.debug, len(cfg.highlights))
@@ -76,6 +78,7 @@ def save_config(cfg: Config) -> None:
         "auto_start": cfg.auto_start,
         "debug": cfg.debug,
         "highlights": cfg.highlights,
+        "screen_index": cfg.screen_index,
     }
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, ensure_ascii=False)
@@ -127,6 +130,11 @@ class ConfigManager:
 
     def get_color(self, process_name: str) -> Optional[str]:
         return self.config.highlights.get(process_name)
+
+    def set_screen_index(self, screen_index: int) -> None:
+        self.config.screen_index = screen_index
+        log.info("目标屏幕切换为: %d", screen_index)
+        self.save()
 
     def set_auto_start(self, auto_start: bool) -> None:
         self.config.auto_start = auto_start
